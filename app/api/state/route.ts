@@ -9,11 +9,15 @@ const ALLOWED_KEYS = new Set([
   "led3",
   "led4",
   "led5",
+  "led6",
+  "led7",
   "speed1",
   "speed2",
   "speed3",
   "speed4",
-  "speed5"
+  "speed5",
+  "speed6",
+  "speed7"
 ]);
 
 function cleanPatch(input: Record<string, unknown>) {
