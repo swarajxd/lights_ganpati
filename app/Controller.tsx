@@ -12,14 +12,18 @@ type State = {
   led3: number;
   led4: number;
   led5: number;
+  led6: number;
+  led7: number;
   speed1: number;
   speed2: number;
   speed3: number;
   speed4: number;
   speed5: number;
+  speed6: number;
+  speed7: number;
 };
 
-const LED_NAMES = ["LED 1", "LED 2", "LED 3", "LED 4", "LED 5"];
+const LED_NAMES = ["LED 1", "LED 2", "LED 3", "LED 4", "LED 5", "LED 6", "LED 7"];
 
 function PowerIcon() {
   return (
@@ -69,16 +73,16 @@ export default function Controller() {
   const brightness = useMemo(
     () =>
       state
-        ? [state.led1, state.led2, state.led3, state.led4, state.led5]
-        : [0, 0, 0, 0, 0],
+        ? [state.led1, state.led2, state.led3, state.led4, state.led5, state.led6, state.led7]
+        : [0, 0, 0, 0, 0, 0, 0],
     [state]
   );
 
   const speeds = useMemo(
     () =>
       state
-        ? [state.speed1, state.speed2, state.speed3, state.speed4, state.speed5]
-        : [2000, 1500, 3000, 1000, 2000],
+        ? [state.speed1, state.speed2, state.speed3, state.speed4, state.speed5, state.speed6, state.speed7]
+        : [5000, 5000, 5000, 5000, 5000, 5000, 5000],
     [state]
   );
 
@@ -338,7 +342,7 @@ export default function Controller() {
 
       <footer>
         <GearIcon />
-        ESP32 cloud controller · 5 channels
+        ESP32 cloud controller · 7 channels
       </footer>
     </main>
   );
