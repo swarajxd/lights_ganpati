@@ -109,7 +109,7 @@ const SHOW_CUES: ShowCue[] = [
   { led: 2, onAt: 82.5, offAt: 93 }, // 1:22.5 -> 1:33
   { led: 3, onAt: 96.5, offAt: 105 }, // 1:36.5 -> 1:45
   { led: 4, onAt: 105, offAt: 115 }, // 1:45 -> 1:55
-  { led: 5, onAt: 120, offAt: 128 }, // 2:00 -> 2:08
+  { led: 5, onAt: 119, offAt: 127 }, // 1:59 -> 2:07 (shifted 1s earlier)
   { led: 6, onAt: 128, offAt: 138 }, // 2:08 -> 2:18
 
   // 🌟 Finale part 1 — everything except LED 7 turns on and stays on
