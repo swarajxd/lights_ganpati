@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type State = {
   id: number;
@@ -60,15 +60,108 @@ function GearIcon() {
   );
 }
 
+function PlayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4.5v15l14-7.5-14-7.5Z" />
+    </svg>
+  );
+}
+
+function StopIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12" rx="2.5" />
+    </svg>
+  );
+}
+
+// 🎵 ============================================================
+// 🎇 GANPATI LIGHT SHOW — CUE SHEET 🎇
+// ============================================================
+// This is the ONLY place you need to edit to change when a light
+// turns on or off during the audio show. Nothing else in the
+// file needs to change.
+//
+// Each entry = one on/off event for one LED.
+//   led    -> which light, 1 to 7
+//   onAt   -> second in the song when it turns ON  (mm:ss -> seconds)
+//   offAt  -> second in the song when it turns OFF
+//             use `null` if it should just STAY ON for the
+//             rest of the show (used for the finale below) 🌟
+//
+// Reminder: mm:ss -> seconds is (minutes * 60) + seconds.
+// Example: 1:12 -> (1 * 60) + 12 = 72
+// ============================================================
+
+type ShowCue = {
+  led: number;
+  onAt: number;
+  offAt: number | null;
+};
+
+const SHOW_CUES: ShowCue[] = [
+  // 🕯️ Intro — LED 7 opens the show
+  { led: 7, onAt: 0, offAt: 49 }, // 0:00 -> 0:49
+
+  // ✨ Running sequence — one light at a time
+  { led: 1, onAt: 72, offAt: 82.5 }, // 1:12 -> 1:22.5
+  { led: 2, onAt: 82.5, offAt: 93 }, // 1:22.5 -> 1:33
+  { led: 3, onAt: 96.5, offAt: 105 }, // 1:36.5 -> 1:45
+  { led: 4, onAt: 105, offAt: 115 }, // 1:45 -> 1:55
+  { led: 5, onAt: 120, offAt: 128 }, // 2:00 -> 2:08
+  { led: 6, onAt: 128, offAt: 138 }, // 2:08 -> 2:18
+
+  // 🌟 Finale part 1 — everything except LED 7 turns on and stays on
+  { led: 1, onAt: 142, offAt: null }, // 2:22 -> stays on
+  { led: 2, onAt: 142, offAt: null }, // 2:22 -> stays on
+  { led: 3, onAt: 142, offAt: null }, // 2:22 -> stays on
+  { led: 4, onAt: 142, offAt: null }, // 2:22 -> stays on
+  { led: 5, onAt: 142, offAt: null }, // 2:22 -> stays on
+  { led: 6, onAt: 142, offAt: null }, // 2:22 -> stays on
+
+  // 🎆 Finale part 2 — LED 7 joins in, everything stays on together
+  { led: 7, onAt: 152, offAt: null } // 2:32 -> stays on
+];
+// ============================================================
+// 🎇 END OF CUE SHEET — don't need to touch anything below 🎇
+// ============================================================
+
+// Given a point in time (seconds), work out which LEDs should be
+// ON right now according to the cue sheet above.
+function desiredStateAt(seconds: number): number[] {
+  const result = [0, 0, 0, 0, 0, 0, 0];
+  for (const cue of SHOW_CUES) {
+    const isOn = seconds >= cue.onAt && (cue.offAt === null || seconds < cue.offAt);
+    if (isOn) {
+      result[cue.led - 1] = 100;
+    }
+  }
+  return result;
+}
+
+function formatTime(totalSeconds: number): string {
+  const safe = Number.isFinite(totalSeconds) ? totalSeconds : 0;
+  const m = Math.floor(safe / 60);
+  const s = Math.floor(safe % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 export default function Controller() {
   const [state, setState] = useState<State | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [activeTab, setActiveTab] = useState<"manual" | "wave">("manual");
-  const [selectedLed, setSelectedLed] = useState(0);
   const [loginUser, setLoginUser] = useState("admin");
   const [loginPass, setLoginPass] = useState("");
+
+  // ------- Show playback state -------
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastSentRef = useRef<number[] | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [isShowPlaying, setIsShowPlaying] = useState(false);
+  const [showElapsed, setShowElapsed] = useState(0);
 
   const brightness = useMemo(
     () =>
@@ -101,6 +194,14 @@ export default function Controller() {
 
   useEffect(() => {
     loadState().catch((e) => setError(e.message));
+  }, []);
+
+  // Clean up the animation frame loop if the component unmounts
+  // while the show is playing.
+  useEffect(() => {
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
   }, []);
 
   async function login(e: React.FormEvent) {
@@ -155,6 +256,80 @@ export default function Controller() {
     }
   }
 
+  // ------- Show playback engine -------
+  // Runs once per animation frame while the show is playing:
+  // reads the audio's current playback position, works out which
+  // LEDs should be on/off right now, and only sends an update
+  // when something actually needs to change.
+  function tickShow() {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    setShowElapsed(audio.currentTime);
+
+    const desired = desiredStateAt(audio.currentTime);
+    const last = lastSentRef.current;
+    const changed = !last || desired.some((v, i) => v !== last[i]);
+
+    if (changed) {
+      const patch: Record<string, number> = {};
+      desired.forEach((value, index) => {
+        if (!last || value !== last[index]) {
+          patch[`led${index + 1}`] = value;
+        }
+      });
+      lastSentRef.current = desired;
+      update(patch as Partial<State>);
+    }
+
+    rafRef.current = requestAnimationFrame(tickShow);
+  }
+
+  async function startShow() {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    audio.currentTime = 0;
+    lastSentRef.current = null;
+
+    // Make sure the ESP32 is reading direct LED values, not wave mode.
+    await update({ mode: "manual" });
+
+    try {
+      await audio.play();
+    } catch (e: any) {
+      setError("Could not start audio: " + e.message);
+      return;
+    }
+
+    setIsShowPlaying(true);
+    rafRef.current = requestAnimationFrame(tickShow);
+  }
+
+  function stopShow() {
+    const audio = audioRef.current;
+    if (audio) audio.pause();
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    setIsShowPlaying(false);
+    // Lights are intentionally left exactly as they were -
+    // they only change again once manual or wave mode is used.
+  }
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    function onEnded() {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      setIsShowPlaying(false);
+      // Audio finished - lights stay exactly as the last cue left
+      // them until manual or wave mode changes them again.
+    }
+
+    audio.addEventListener("ended", onEnded);
+    return () => audio.removeEventListener("ended", onEnded);
+  }, []);
+
   if (loggedIn === null) {
     return <div className="loading">Connecting to controller…</div>;
   }
@@ -201,8 +376,6 @@ export default function Controller() {
 
   if (!state) return <div className="loading">Loading controller…</div>;
 
-  const current = brightness[selectedLed];
-
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -219,36 +392,19 @@ export default function Controller() {
         <div className="hero-top">
           <div>
             <span className="status-dot" />
-            <span>{state.mode === "wave" ? "Wave is running" : "Lights ready"}</span>
+            <span>
+              {isShowPlaying
+                ? "Show is running"
+                : state.mode === "wave"
+                ? "Wave is running"
+                : "Lights ready"}
+            </span>
           </div>
           <span className="device-label">{state.device_id}</span>
         </div>
-
-        <div className="hero-number">{Math.round((current / 80) * 100)}%</div>
-        <div className="hero-caption">{LED_NAMES[selectedLed]} brightness</div>
-
-        <input
-          className="range hero-range"
-          type="range"
-          min="0"
-          max="80"
-          value={current}
-          onChange={(e) => {
-            const value = Number(e.target.value);
-            const key = `led${selectedLed + 1}` as keyof State;
-            setState({ ...state, [key]: value });
-          }}
-          onMouseUp={(e) => {
-            const value = Number((e.target as HTMLInputElement).value);
-            update({ [`led${selectedLed + 1}`]: value } as Partial<State>);
-          }}
-          onTouchEnd={(e) => {
-            const value = Number((e.target as HTMLInputElement).value);
-            update({ [`led${selectedLed + 1}`]: value } as Partial<State>);
-          }}
-        />
-
-        <div className="range-labels"><span>0%</span><span>100%</span></div>
+        <div className="hero-caption" style={{ marginTop: 10 }}>
+          Tap a light below to turn it on or off.
+        </div>
       </section>
 
       <div className="tabs">
@@ -264,10 +420,7 @@ export default function Controller() {
         >
           <WaveIcon /> Wave
         </button>
-        <button
-          className={activeTab === "wave" ? "tab" : "tab"}
-          onClick={() => update({ mode: "manual" })}
-        >
+        <button className="tab" onClick={() => update({ mode: "manual" })}>
           <PowerIcon /> Stop
         </button>
       </div>
@@ -276,26 +429,29 @@ export default function Controller() {
         <div className="section-heading">
           <div>
             <p className="eyebrow">INDIVIDUAL CONTROL</p>
-            <h2>Choose a light</h2>
+            <h2>Tap a light to toggle it</h2>
           </div>
           <span className="small-status">{busy ? "Updating…" : "Synced"}</span>
         </div>
 
         <div className="led-grid">
-          {LED_NAMES.map((name, index) => (
-            <button
-              key={name}
-              className={`led-card ${selectedLed === index ? "selected" : ""}`}
-              onClick={() => {
-                setSelectedLed(index);
-                update({ mode: "manual" });
-              }}
-            >
-              <span className={`led-bulb ${brightness[index] > 0 ? "on" : ""}`} />
-              <span className="led-name">{name}</span>
-              <span className="led-value">{Math.round((brightness[index] / 80) * 100)}%</span>
-            </button>
-          ))}
+          {LED_NAMES.map((name, index) => {
+            const on = brightness[index] > 0;
+            return (
+              <button
+                key={name}
+                className={`led-card ${on ? "selected" : ""}`}
+                onClick={() => {
+                  const key = `led${index + 1}` as keyof State;
+                  update({ [key]: on ? 0 : 100, mode: "manual" } as Partial<State>);
+                }}
+              >
+                <span className={`led-bulb ${on ? "on" : ""}`} />
+                <span className="led-name">{name}</span>
+                <span className="led-value">{on ? "ON" : "OFF"}</span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -336,6 +492,49 @@ export default function Controller() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* 🎇 ============================================================
+          GANPATI LIGHT SHOW PANEL
+          To change WHEN a light turns on/off during the show, edit the
+          SHOW_CUES list near the top of this file - nothing here needs
+          to change.
+          ============================================================ */}
+      <section className="panel show-panel">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">GANPATI LIGHT SHOW</p>
+            <h2>Music-synced sequence</h2>
+          </div>
+          <span className="small-status">{isShowPlaying ? "Playing…" : "Stopped"}</span>
+        </div>
+
+        <audio ref={audioRef} src="/ganpati_audio.mp3" preload="auto" />
+
+        <div className="show-controls">
+          <button
+            className="primary full"
+            onClick={isShowPlaying ? stopShow : startShow}
+          >
+            {isShowPlaying ? (
+              <>
+                <StopIcon /> Stop show
+              </>
+            ) : (
+              <>
+                <PlayIcon /> Play show
+              </>
+            )}
+          </button>
+          <div className="show-time">{formatTime(showElapsed)}</div>
+        </div>
+
+        <p className="muted show-hint">
+          🔊 Connect this device to your Bluetooth speaker first, then press
+          Play — the audio and the lights follow the same timeline. When the
+          audio ends, the lights stay exactly as they are until you switch to
+          Manual or Wave mode. 🎶
+        </p>
       </section>
 
       {error && <div className="error bottom-error">{error}</div>}

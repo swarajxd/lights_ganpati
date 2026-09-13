@@ -71,6 +71,7 @@ button {
 .brand-mark svg,
 .icon-button svg,
 .tab svg,
+.show-panel .primary.full svg,
 footer svg {
   width: 20px;
   height: 20px;
@@ -445,6 +446,36 @@ label input:focus {
   font-size: 11px;
   color: #777b90;
   font-variant-numeric: tabular-nums;
+}
+
+.show-panel .primary.full svg {
+  margin-right: 8px;
+  vertical-align: -4px;
+}
+
+.show-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.show-controls .primary.full {
+  flex: 1;
+}
+
+.show-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  color: #65697e;
+  min-width: 42px;
+  text-align: right;
+}
+
+.show-hint {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8b8fa3;
 }
 
 footer {
