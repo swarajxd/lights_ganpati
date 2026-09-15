@@ -102,7 +102,7 @@ type ShowCue = {
 
 const SHOW_CUES: ShowCue[] = [
   // 🕯️ Intro — LED 7 opens the show
-  { led: 7, onAt: 0, offAt: 49 }, // 0:00 -> 0:49
+  { led: 7, onAt: 0, offAt: 70 }, // 0:00 -> 1:10
 
   // ✨ Running sequence — one light at a time
   { led: 1, onAt: 72, offAt: 82.5 }, // 1:12 -> 1:22.5
